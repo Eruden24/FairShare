@@ -5,20 +5,22 @@ import io.github.eruden24.fairshare.dto.group.GroupResponse;
 import io.github.eruden24.fairshare.repository.GroupRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/groups")
 @RequiredArgsConstructor
-public class ExpenseGroupController {
+public class GroupController {
 
-    private final GroupRepository expenseGroupRepository;
+    private final GroupRepository groupRepository;
 
     @PostMapping
-    public GroupResponse create(@Valid @RequestBody CreateGroupRequest request) {
-        return expenseGroupRepository.create(request);
+    @ResponseStatus(HttpStatus.CREATED)
+    public GroupResponse create(@RequestHeader("X-user-Id") UUID currentUserId,
+            @Valid @RequestBody CreateGroupRequest request) {
+        return groupRepository.create(currentUserId, request);
     }
 }

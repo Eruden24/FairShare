@@ -40,7 +40,7 @@ public class UserService {
             user.setDefaultCurrency(request.defaultCurrency());
         }
 
-        return userMapper.toResponse(userRepository.save(user));
+        return userMapper.toResponse(userRepository.saveAndFlush(user));
     }
     
     @Transactional(readOnly = true)

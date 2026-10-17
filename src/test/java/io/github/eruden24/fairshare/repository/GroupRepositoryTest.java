@@ -24,10 +24,10 @@ class GroupRepositoryTest {
     UserRepository userRepository;
 
     @Autowired
-    ExpenseGroupRepository groupRepository;
+    GroupRepository groupRepository;
 
     @Autowired
-    GroupMemberRepository memberRepository;
+    MemberRepository memberRepository;
 
     @Test
     void createsGroupWithOwnerAndFindsItByMember() {

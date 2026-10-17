@@ -1,4 +1,10 @@
-package io.github.eruden24.fairshare.controller;
+package io.github.eruden24.fairshare.dto.group;
 
-public record AddMemberRequest() {
-}
+import jakarta.validation.constraints.NotNull;
+
+import java.util.UUID;
+
+public record AddMemberRequest(
+    @NotNull
+    UUID userId
+) {}
