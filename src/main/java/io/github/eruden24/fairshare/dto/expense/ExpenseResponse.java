@@ -1,5 +1,7 @@
 package io.github.eruden24.fairshare.dto.expense;
 
+import io.github.eruden24.fairshare.enumeration.SplitType;
+
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -14,7 +16,9 @@ public record ExpenseResponse(
         String currency,
         UUID paidById,
         LocalDate date,
+        SplitType splitType,
         UUID createdById,
         Instant createdAt,
+        Instant updatedAt,
         List<SplitResponse> splits
 ) {}

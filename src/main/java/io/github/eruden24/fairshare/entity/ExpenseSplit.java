@@ -5,6 +5,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -33,9 +34,19 @@ public class ExpenseSplit {
     @Column(name = "amount_minor", nullable = false)
     private long amountMinor;
 
-    ExpenseSplit(Expense expense, User user, long amountMinor) {
+    // The percentage or number of shares the participant entered; null for EQUAL and EXACT splits
+    @Column(name = "split_value", precision = 15, scale = 3)
+    private BigDecimal value;
+
+    ExpenseSplit(Expense expense, User user, long amountMinor, BigDecimal value) {
         this.expense = expense;
         this.user = user;
         this.amountMinor = amountMinor;
+        this.value = value;
+    }
+
+    void update(long amountMinor, BigDecimal value) {
+        this.amountMinor = amountMinor;
+        this.value = value;
     }
 }

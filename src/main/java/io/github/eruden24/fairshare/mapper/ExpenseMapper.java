@@ -25,10 +25,20 @@ public interface ExpenseMapper {
     @Mapping(target="userId", source="user.id")
     @Mapping(target="displayName", source="user.displayName")
     @Mapping(target="amount", expression="java(toDecimal(split.getAmountMinor(), split.getExpense().getGroup().getCurrency()))")
+    @Mapping(target="value", expression="java(stripZeros(split.getValue()))")
     SplitResponse toSplitResponse(ExpenseSplit split);
 
     // Minor units -> decimal for the API: 1250 EUR -> 12.50
     default BigDecimal toDecimal(long minorUnits, String currency) {
         return new Money(minorUnits, Currency.getInstance(currency)).toDecimal();
+    }
+
+    // The column keeps 3 decimals: 33.330 -> 33.33, 2.000 -> 2. The setScale stops 100 becoming 1E+2.
+    default BigDecimal stripZeros(BigDecimal value) {
+        if (value == null) {
+            return null;
+        }
+        BigDecimal stripped = value.stripTrailingZeros();
+        return stripped.scale() < 0 ? stripped.setScale(0) : stripped;
     }
 }
