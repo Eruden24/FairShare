@@ -28,13 +28,21 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
     private final JwtProperties jwtProperties;
+    private final LoginAttemptLimiter loginAttemptLimiter;
 
     @Transactional(readOnly = true)
     public TokenResponse login(LoginRequest request) {
+        String email = UserService.normalizeEmail(request.email());
+        loginAttemptLimiter.checkAllowed(email);
+
         // Same message for unknown email and wrong password, so callers can't probe which emails exist
-        User user = userRepository.findByEmailIgnoreCase(UserService.normalizeEmail(request.email()))
+        User user = userRepository.findByEmailIgnoreCase(email)
                 .filter(u -> passwordEncoder.matches(request.password(), u.getPasswordHash()))
-                .orElseThrow(() -> new UnauthorizedException("Invalid email or password"));
+                .orElseThrow(() -> {
+                    loginAttemptLimiter.recordFailure(email);
+                    return new UnauthorizedException("Invalid email or password");
+                });
+        loginAttemptLimiter.recordSuccess(email);
 
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()

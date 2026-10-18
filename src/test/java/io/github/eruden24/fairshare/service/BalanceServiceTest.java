@@ -9,6 +9,9 @@ import io.github.eruden24.fairshare.entity.UserGroup;
 import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.exception.NotFoundException;
 import io.github.eruden24.fairshare.repository.ExpenseRepository;
+import io.github.eruden24.fairshare.repository.GroupTotal;
+import io.github.eruden24.fairshare.repository.SettlementRepository;
+import io.github.eruden24.fairshare.repository.UserTotal;
 import io.github.eruden24.fairshare.repository.UserGroupRepository;
 import io.github.eruden24.fairshare.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -36,6 +40,9 @@ class BalanceServiceTest {
 
     @Mock
     ExpenseRepository expenseRepository;
+
+    @Mock
+    SettlementRepository settlementRepository;
 
     @Mock
     UserGroupRepository userGroupRepository;
@@ -52,8 +59,8 @@ class BalanceServiceTest {
 
     @BeforeEach
     void setUp() {
-        balanceService = new BalanceService(expenseRepository, userGroupRepository, userRepository,
-                new GroupAccess(userGroupRepository));
+        balanceService = new BalanceService(expenseRepository, settlementRepository, userGroupRepository,
+                userRepository, new GroupAccess(userGroupRepository));
         anna = user("Anna");
         bob = user("Bob");
         carol = user("Carol");
@@ -79,6 +86,33 @@ class BalanceServiceTest {
                         tuple("Carol", "0.00", "30.00", "-30.00"));
         assertThat(response.balances().stream().map(MemberBalanceResponse::balance).reduce(BigDecimal.ZERO, BigDecimal::add))
                 .isEqualByComparingTo("0");
+    }
+
+    @Test
+    void settlementsMoveBalancesTowardsZero() {
+        // Same as above, then Carol pays Bob back 30.00
+        givenMembers(anna, bob, carol);
+        givenTotals(Map.of(anna, 3000L, bob, 6000L), Map.of(anna, 3000L, bob, 3000L, carol, 3000L));
+        when(settlementRepository.sumSentPerUser(group.getId())).thenReturn(userTotals(Map.of(carol, 3000L)));
+        when(settlementRepository.sumReceivedPerUser(group.getId())).thenReturn(userTotals(Map.of(bob, 3000L)));
+
+        assertThat(balanceService.forGroup(anna.getId(), group.getId()).balances())
+                .extracting(MemberBalanceResponse::displayName, b -> b.sent().toPlainString(),
+                        b -> b.received().toPlainString(), b -> b.balance().toPlainString())
+                .containsExactlyInAnyOrder(
+                        tuple("Anna", "0.00", "0.00", "0.00"),
+                        tuple("Bob", "0.00", "30.00", "0.00"),
+                        tuple("Carol", "30.00", "0.00", "0.00"));
+    }
+
+    @Test
+    void netBalancesAreInMinorUnits() {
+        givenTotals(Map.of(anna, 3000L), Map.of(anna, 1500L, bob, 1500L));
+        when(settlementRepository.sumSentPerUser(group.getId())).thenReturn(userTotals(Map.of(bob, 500L)));
+        when(settlementRepository.sumReceivedPerUser(group.getId())).thenReturn(userTotals(Map.of(anna, 500L)));
+
+        assertThat(balanceService.netBalances(group.getId())).containsExactlyInAnyOrderEntriesOf(Map.of(
+                anna.getId(), 1000L, bob.getId(), -1000L));
     }
 
     @Test
@@ -147,20 +181,20 @@ class BalanceServiceTest {
     private void givenTotals(Map<User, Long> paid, Map<User, Long> owed) {
         when(expenseRepository.sumPaidPerUser(group.getId())).thenReturn(userTotals(paid));
         when(expenseRepository.sumOwedPerUser(group.getId())).thenReturn(userTotals(owed));
-        when(userRepository.findAllById(any())).thenReturn(List.of(anna, bob, carol));
+        lenient().when(userRepository.findAllById(any())).thenReturn(List.of(anna, bob, carol));
     }
 
-    private static List<ExpenseRepository.UserTotal> userTotals(Map<User, Long> totals) {
+    private static List<UserTotal> userTotals(Map<User, Long> totals) {
         return totals.entrySet().stream()
-                .map(e -> (ExpenseRepository.UserTotal) new ExpenseRepository.UserTotal() {
+                .map(e -> (UserTotal) new UserTotal() {
                     public UUID getUserId() { return e.getKey().getId(); }
                     public long getTotal() { return e.getValue(); }
                 })
                 .toList();
     }
 
-    private static ExpenseRepository.GroupTotal groupTotal(Group group, long total) {
-        return new ExpenseRepository.GroupTotal() {
+    private static GroupTotal groupTotal(Group group, long total) {
+        return new GroupTotal() {
             public UUID getGroupId() { return group.getId(); }
             public long getTotal() { return total; }
         };

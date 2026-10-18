@@ -71,9 +71,9 @@ class ExpenseFlowIntegrationTest extends ApiFlowTestSupport {
         mockMvc.perform(get("/api/groups/" + otherGroupId + "/expenses/" + expenseId).header(HttpHeaders.AUTHORIZATION, anna.token()))
                 .andExpect(status().isNotFound());
 
-        // Deleting the group deletes its expenses too
+        // Bob and Carol still owe Anna, so the group can't be deleted yet
         mockMvc.perform(delete("/api/groups/" + groupId).header(HttpHeaders.AUTHORIZATION, anna.token()))
-                .andExpect(status().isNoContent());
+                .andExpect(status().isConflict());
     }
 
     @Test

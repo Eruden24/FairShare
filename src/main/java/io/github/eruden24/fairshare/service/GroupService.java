@@ -27,6 +27,8 @@ import java.util.stream.Collectors;
 
 /**
  * Access rules (members only, 404 for others, 403 for owner-only actions) live in {@link GroupAccess}.
+ * Money rules: nobody leaves or is removed while their balance isn't zero, and a group is only deleted
+ * once everyone is settled up, so no debt can disappear.
  */
 @Service
 @RequiredArgsConstructor
@@ -37,6 +39,7 @@ public class GroupService {
     private final UserRepository userRepository;
     private final GroupMapper groupMapper;
     private final GroupAccess groupAccess;
+    private final BalanceService balanceService;
 
     @Transactional
     public GroupResponse create(UUID currentUserId, CreateGroupRequest request) {
@@ -92,6 +95,11 @@ public class GroupService {
     public void delete(UUID currentUserId, UUID groupId) {
         UserGroup owner = groupAccess.requireOwner(groupId, currentUserId, "delete the group");
 
+        // Deleting a group deletes its expenses and settlements; only allowed once nobody is owed anything
+        if (balanceService.netBalances(groupId).values().stream().anyMatch(balance -> balance != 0)) {
+            throw new ConflictException("The group can't be deleted while balances are not settled; settle up first");
+        }
+
         // Remove memberships through JPA first: the owner's membership is loaded in this session,
         // and Hibernate refuses to flush an entity that still points at a deleted group
         userGroupRepository.deleteAll(userGroupRepository.findByGroupIdOrderByJoinedAtAsc(groupId));
@@ -130,8 +138,12 @@ public class GroupService {
         if (memberUserId.equals(currentUserId)) {
             throw new ConflictException("The owner cannot be removed; transfer ownership first");
         }
+        UserGroup membership = findMembership(groupId, memberUserId);
+        if (hasOpenBalance(groupId, memberUserId)) {
+            throw new ConflictException("The member can't be removed while their balance is not zero; settle up first");
+        }
 
-        userGroupRepository.delete(findMembership(groupId, memberUserId));
+        userGroupRepository.delete(membership);
     }
 
     @Transactional
@@ -140,6 +152,9 @@ public class GroupService {
 
         if (membership.getRole() == GroupRole.OWNER) {
             throw new ConflictException("The owner cannot leave the group; transfer ownership first");
+        }
+        if (hasOpenBalance(groupId, currentUserId)) {
+            throw new ConflictException("You can't leave the group while your balance is not zero; settle up first");
         }
 
         userGroupRepository.delete(membership);
@@ -161,6 +176,10 @@ public class GroupService {
 
         newOwner.setRole(GroupRole.OWNER);
         userGroupRepository.saveAndFlush(newOwner);
+    }
+
+    private boolean hasOpenBalance(UUID groupId, UUID userId) {
+        return balanceService.netBalances(groupId).getOrDefault(userId, 0L) != 0;
     }
 
     private GroupResponse toResponse(UserGroup membership) {

@@ -50,14 +50,4 @@ public interface ExpenseRepository extends JpaRepository<Expense, UUID>, JpaSpec
             group by s.expense.group.id
             """)
     List<GroupTotal> sumOwedPerGroup(@Param("userId") UUID userId);
-
-    interface UserTotal {
-        UUID getUserId();
-        long getTotal();
-    }
-
-    interface GroupTotal {
-        UUID getGroupId();
-        long getTotal();
-    }
 }

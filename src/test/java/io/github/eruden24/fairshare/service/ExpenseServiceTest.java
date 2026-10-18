@@ -10,6 +10,7 @@ import io.github.eruden24.fairshare.entity.User;
 import io.github.eruden24.fairshare.entity.UserGroup;
 import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.enumeration.SplitType;
+import io.github.eruden24.fairshare.exception.ConflictException;
 import io.github.eruden24.fairshare.exception.ForbiddenException;
 import io.github.eruden24.fairshare.exception.InvalidRequestException;
 import io.github.eruden24.fairshare.exception.NotFoundException;
@@ -17,6 +18,7 @@ import io.github.eruden24.fairshare.mapper.ExpenseMapper;
 import io.github.eruden24.fairshare.repository.ExpenseRepository;
 import io.github.eruden24.fairshare.repository.UserGroupRepository;
 import io.github.eruden24.fairshare.split.SplitCalculator;
+import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -52,6 +54,9 @@ class ExpenseServiceTest {
     @Mock
     UserGroupRepository userGroupRepository;
 
+    @Mock
+    EntityManager entityManager;
+
     ExpenseService expenseService;
 
     final UUID groupId = UUID.randomUUID();
@@ -65,7 +70,7 @@ class ExpenseServiceTest {
     @BeforeEach
     void setUp() {
         expenseService = new ExpenseService(expenseRepository, userGroupRepository, new GroupAccess(userGroupRepository),
-                Mappers.getMapper(ExpenseMapper.class), new SplitCalculator(new Random(42)));
+                Mappers.getMapper(ExpenseMapper.class), new SplitCalculator(new Random(42)), entityManager);
         anna = user("Anna");
         bob = user("Bob");
         carol = user("Carol");
@@ -206,6 +211,19 @@ class ExpenseServiceTest {
     }
 
     @Test
+    void staleVersionIsRejected() {
+        givenMembers(bob, anna);
+        givenExpenseCreatedBy(bob);
+        ExpenseRequest stale = new ExpenseRequest("Dinner", new BigDecimal("10.00"), bob.getId(), null,
+                List.of(new ParticipantRequest(bob.getId(), null)), null, 7L);
+
+        assertThatThrownBy(() -> expenseService.update(bob.getId(), groupId, expenseId, stale))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("changed by someone else");
+        verify(expenseRepository, never()).saveAndFlush(any());
+    }
+
+    @Test
     void ownerCanDeleteSomeoneElsesExpense() {
         givenMembers(anna, bob);
         Expense expense = givenExpenseCreatedBy(bob);
@@ -259,7 +277,7 @@ class ExpenseServiceTest {
 
     private static ExpenseRequest equal(String amount, User payer, User... participants) {
         return new ExpenseRequest("Dinner", new BigDecimal(amount), payer.getId(), null,
-                Arrays.stream(participants).map(user -> new ParticipantRequest(user.getId(), null)).toList(), null);
+                Arrays.stream(participants).map(user -> new ParticipantRequest(user.getId(), null)).toList(), null, null);
     }
 
     private static ExpenseRequest request(String amount, User payer, SplitType type, Map<User, String> values) {
@@ -267,6 +285,6 @@ class ExpenseServiceTest {
                 values.entrySet().stream()
                         .map(e -> new ParticipantRequest(e.getKey().getId(), new BigDecimal(e.getValue())))
                         .toList(),
-                null);
+                null, null);
     }
 }

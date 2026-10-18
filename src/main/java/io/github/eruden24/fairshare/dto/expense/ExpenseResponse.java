@@ -20,5 +20,6 @@ public record ExpenseResponse(
         UUID createdById,
         Instant createdAt,
         Instant updatedAt,
+        long version,
         List<SplitResponse> splits
 ) {}

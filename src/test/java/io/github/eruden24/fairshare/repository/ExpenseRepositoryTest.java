@@ -130,17 +130,17 @@ class ExpenseRepositoryTest {
         expenseRepository.saveAndFlush(taxi);
 
         assertThat(expenseRepository.sumPaidPerUser(group.getId()))
-                .extracting(ExpenseRepository.UserTotal::getUserId, ExpenseRepository.UserTotal::getTotal)
+                .extracting(UserTotal::getUserId, UserTotal::getTotal)
                 .containsExactlyInAnyOrder(tuple(anna.getId(), 3000L), tuple(bob.getId(), 1000L));
         assertThat(expenseRepository.sumOwedPerUser(group.getId()))
-                .extracting(ExpenseRepository.UserTotal::getUserId, ExpenseRepository.UserTotal::getTotal)
+                .extracting(UserTotal::getUserId, UserTotal::getTotal)
                 .containsExactlyInAnyOrder(tuple(anna.getId(), 2000L), tuple(bob.getId(), 2000L));
 
         assertThat(expenseRepository.sumPaidPerGroup(anna.getId()))
-                .extracting(ExpenseRepository.GroupTotal::getGroupId, ExpenseRepository.GroupTotal::getTotal)
+                .extracting(GroupTotal::getGroupId, GroupTotal::getTotal)
                 .containsExactly(tuple(group.getId(), 3000L));
         assertThat(expenseRepository.sumOwedPerGroup(anna.getId()))
-                .extracting(ExpenseRepository.GroupTotal::getGroupId, ExpenseRepository.GroupTotal::getTotal)
+                .extracting(GroupTotal::getGroupId, GroupTotal::getTotal)
                 .containsExactly(tuple(group.getId(), 2000L));
     }
 

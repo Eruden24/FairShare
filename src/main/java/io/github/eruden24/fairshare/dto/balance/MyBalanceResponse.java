@@ -10,5 +10,7 @@ public record MyBalanceResponse(
         String currency,
         BigDecimal paid,
         BigDecimal owed,
+        BigDecimal sent,
+        BigDecimal received,
         BigDecimal balance
 ) {}

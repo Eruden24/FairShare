@@ -20,6 +20,7 @@ import org.mapstruct.factory.Mappers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -42,6 +43,9 @@ class GroupServiceTest {
     @Mock
     UserRepository userRepository;
 
+    @Mock
+    BalanceService balanceService;
+
     GroupService groupService;
 
     final UUID groupId = UUID.randomUUID();
@@ -55,7 +59,7 @@ class GroupServiceTest {
     @BeforeEach
     void setUp() {
         groupService = new GroupService(groupRepository, userGroupRepository, userRepository,
-                Mappers.getMapper(GroupMapper.class), new GroupAccess(userGroupRepository));
+                Mappers.getMapper(GroupMapper.class), new GroupAccess(userGroupRepository), balanceService);
         owner = new User("owner@example.com", "hash", "Owner");
         member = new User("member@example.com", "hash", "Member");
         group = new Group("Trip", "EUR", owner);
@@ -102,10 +106,56 @@ class GroupServiceTest {
     @Test
     void memberCanLeave() {
         UserGroup membership = givenMembership(memberId, member, GroupRole.MEMBER);
+        when(balanceService.netBalances(groupId)).thenReturn(Map.of(memberId, 0L));
 
         groupService.leave(memberId, groupId);
 
         verify(userGroupRepository).delete(membership);
+    }
+
+    @Test
+    void memberWhoOwesCannotLeave() {
+        givenMembership(memberId, member, GroupRole.MEMBER);
+        when(balanceService.netBalances(groupId)).thenReturn(Map.of(memberId, -1000L, ownerId, 1000L));
+
+        assertThatThrownBy(() -> groupService.leave(memberId, groupId))
+                .isInstanceOf(ConflictException.class)
+                .hasMessageContaining("settle up first");
+
+        verify(userGroupRepository, never()).delete(any());
+    }
+
+    @Test
+    void memberWhoIsOwedCannotBeRemoved() {
+        givenMembership(ownerId, owner, GroupRole.OWNER);
+        givenMembership(memberId, member, GroupRole.MEMBER);
+        when(balanceService.netBalances(groupId)).thenReturn(Map.of(memberId, 500L, ownerId, -500L));
+
+        assertThatThrownBy(() -> groupService.removeMember(ownerId, groupId, memberId))
+                .isInstanceOf(ConflictException.class);
+
+        verify(userGroupRepository, never()).delete(any());
+    }
+
+    @Test
+    void groupWithOpenBalancesCannotBeDeleted() {
+        givenMembership(ownerId, owner, GroupRole.OWNER);
+        when(balanceService.netBalances(groupId)).thenReturn(Map.of(memberId, 500L, ownerId, -500L));
+
+        assertThatThrownBy(() -> groupService.delete(ownerId, groupId))
+                .isInstanceOf(ConflictException.class);
+
+        verify(groupRepository, never()).delete(any());
+    }
+
+    @Test
+    void settledGroupCanBeDeleted() {
+        givenMembership(ownerId, owner, GroupRole.OWNER);
+        when(balanceService.netBalances(groupId)).thenReturn(Map.of(memberId, 0L, ownerId, 0L));
+
+        groupService.delete(ownerId, groupId);
+
+        verify(groupRepository).delete(group);
     }
 
     @Test

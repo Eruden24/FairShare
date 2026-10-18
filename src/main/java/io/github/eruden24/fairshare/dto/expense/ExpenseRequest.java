@@ -39,5 +39,8 @@ public record ExpenseRequest(
     List<@NotNull @Valid ParticipantRequest> participants,
 
     // Optional: defaults to today
-    LocalDate date
+    LocalDate date,
+
+    // Optional, only used when replacing: the version you last read. If the expense has changed since, you get 409.
+    Long version
 ) {}

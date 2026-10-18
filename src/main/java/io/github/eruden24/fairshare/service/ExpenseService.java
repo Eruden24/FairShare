@@ -10,6 +10,7 @@ import io.github.eruden24.fairshare.entity.User;
 import io.github.eruden24.fairshare.entity.UserGroup;
 import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.enumeration.SplitType;
+import io.github.eruden24.fairshare.exception.ConflictException;
 import io.github.eruden24.fairshare.exception.ForbiddenException;
 import io.github.eruden24.fairshare.exception.InvalidRequestException;
 import io.github.eruden24.fairshare.exception.NotFoundException;
@@ -19,6 +20,8 @@ import io.github.eruden24.fairshare.repository.ExpenseRepository;
 import io.github.eruden24.fairshare.repository.ExpenseSpecifications;
 import io.github.eruden24.fairshare.repository.UserGroupRepository;
 import io.github.eruden24.fairshare.split.SplitCalculator;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -28,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Currency;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +54,7 @@ public class ExpenseService {
     private final GroupAccess groupAccess;
     private final ExpenseMapper expenseMapper;
     private final SplitCalculator splitCalculator;
+    private final EntityManager entityManager;
 
     @Transactional
     public ExpenseResponse create(UUID currentUserId, UUID groupId, ExpenseRequest request) {
@@ -93,6 +96,15 @@ public class ExpenseService {
         Expense expense = findExpense(groupId, expenseId);
         requireCanModify(membership, expense, "edit");
 
+        if (request.version() != null && request.version() != expense.getVersion()) {
+            throw new ConflictException("This expense was changed by someone else since you loaded it; "
+                    + "reload it (current version " + expense.getVersion() + ") and try again");
+        }
+        // Lock the row and bump the version right away. Without this, an edit that only changes the shares
+        // wouldn't touch the expenses row, so its version wouldn't change. A concurrent edit of the same
+        // expense now waits for this one and then fails with 409.
+        entityManager.lock(expense, LockModeType.PESSIMISTIC_FORCE_INCREMENT);
+
         PreparedExpense prepared = prepare(request, membership.getGroup());
 
         expense.setDescription(prepared.description());
@@ -127,7 +139,7 @@ public class ExpenseService {
             throw new InvalidRequestException("paidById", "is not a member of this group");
         }
         List<User> participants = findParticipants(request.participants(), members);
-        Money amount = toMoney(request.amount(), group.getCurrency());
+        Money amount = Amounts.toMoney(request.amount(), group.getCurrency());
         SplitType splitType = request.splitType() != null ? request.splitType() : SplitType.EQUAL;
 
         List<BigDecimal> values = request.participants().stream().map(ParticipantRequest::value).toList();
@@ -174,15 +186,5 @@ public class ExpenseService {
                     return user;
                 })
                 .toList();
-    }
-
-    private static Money toMoney(BigDecimal amount, String currencyCode) {
-        Currency currency = Currency.getInstance(currencyCode);
-        try {
-            return Money.of(amount, currency);
-        } catch (IllegalArgumentException e) {
-            throw new InvalidRequestException("amount",
-                    "must have at most " + currency.getDefaultFractionDigits() + " decimals in " + currencyCode);
-        }
     }
 }

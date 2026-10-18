@@ -12,6 +12,7 @@ import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -75,19 +76,28 @@ class BalanceFlowIntegrationTest extends ApiFlowTestSupport {
     }
 
     @Test
-    void someoneWhoLeftKeepsTheirBalanceInTheGroup() throws Exception {
+    void someoneWhoLeftStillShowsUpInTheGroupBalances() throws Exception {
         User anna = registerAndLogin("balance-left-anna@example.com", "Anna");
         User bob = registerAndLogin("balance-left-bob@example.com", "Bob");
         String groupId = createGroup(anna, "EUR");
         addMember(anna, groupId, bob);
-
         createExpense(anna, groupId, "Dinner", "20.00", anna, "2026-10-01", anna, bob);
+
+        // Bob owes 10.00, so he can't leave yet
+        mockMvc.perform(delete("/api/groups/" + groupId + "/members/me").header(HttpHeaders.AUTHORIZATION, bob.token()))
+                .andExpect(status().isConflict());
+
+        // He pays Anna back, then leaves; his expenses stay in the group's history
+        mockMvc.perform(json(post("/api/groups/" + groupId + "/settlements"), """
+                        {"fromUserId": "%s", "toUserId": "%s", "amount": 10.00}
+                        """.formatted(bob.id(), anna.id())).header(HttpHeaders.AUTHORIZATION, bob.token()))
+                .andExpect(status().isCreated());
         mockMvc.perform(delete("/api/groups/" + groupId + "/members/me").header(HttpHeaders.AUTHORIZATION, bob.token()))
                 .andExpect(status().isNoContent());
 
         mockMvc.perform(get("/api/groups/" + groupId + "/balances").header(HttpHeaders.AUTHORIZATION, anna.token()))
                 .andExpect(jsonPath("$.balances[*].displayName").value(contains("Anna", "Bob")))
                 .andExpect(jsonPath("$.balances[*].member").value(contains(true, false)))
-                .andExpect(jsonPath("$.balances[*].balance").value(contains(10.00, -10.00)));
+                .andExpect(jsonPath("$.balances[*].balance").value(contains(0.00, 0.00)));
     }
 }

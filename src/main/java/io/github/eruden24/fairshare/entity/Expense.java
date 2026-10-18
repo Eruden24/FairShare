@@ -74,6 +74,11 @@ public class Expense {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    // Optimistic locking: Hibernate increases it on every update and refuses to overwrite a newer row
+    @Version
+    @Column(name = "version", nullable = false)
+    private long version;
+
     public Expense(Group group, String description, long amountMinor, User paidBy, LocalDate expenseDate,
                    SplitType splitType, User createdBy) {
         this.group = group;
