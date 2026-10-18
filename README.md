@@ -74,7 +74,7 @@ Errors use the standard [Problem Details](https://www.rfc-editor.org/rfc/rfc9457
   "status": 400,
   "title": "Bad Request",
   "detail": "Validation failed",
-  "errors": { "currency": "must be a 3-letter currency code like EUR" }
+  "errors": { "currency": "must be a valid currency code like EUR" }
 }
 ```
 
