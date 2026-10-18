@@ -14,10 +14,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name="expense_groups")
+@Table(name = "groups")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class ExpenseGroup {
+public class Group {
 
     @Id
     @GeneratedValue(strategy= GenerationType.UUID)
@@ -44,7 +44,7 @@ public class ExpenseGroup {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public ExpenseGroup(String name, String currency, User createdBy) {
+    public Group(String name, String currency, User createdBy) {
         this.name = name;
         this.currency = currency;
         this.createdBy = createdBy;

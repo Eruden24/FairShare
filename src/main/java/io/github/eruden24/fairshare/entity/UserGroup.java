@@ -12,10 +12,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "group_members")
+@Table(name = "user_groups")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class GroupMember {
+public class UserGroup {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -24,7 +24,7 @@ public class GroupMember {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "group_id", nullable = false, updatable = false)
-    private ExpenseGroup group;
+    private Group group;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "user_id", nullable = false, updatable = false)
@@ -39,7 +39,7 @@ public class GroupMember {
     @Column(name = "joined_at", nullable = false, updatable = false)
     private Instant joinedAt;
 
-    public GroupMember(ExpenseGroup group, User user, GroupRole role) {
+    public UserGroup(Group group, User user, GroupRole role) {
         this.group = group;
         this.user = user;
         this.role = role;

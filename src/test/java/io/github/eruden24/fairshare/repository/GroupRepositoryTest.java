@@ -1,8 +1,8 @@
 package io.github.eruden24.fairshare.repository;
 
 import io.github.eruden24.fairshare.TestcontainersConfiguration;
-import io.github.eruden24.fairshare.entity.ExpenseGroup;
-import io.github.eruden24.fairshare.entity.GroupMember;
+import io.github.eruden24.fairshare.entity.Group;
+import io.github.eruden24.fairshare.entity.UserGroup;
 import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.entity.User;
 import org.junit.jupiter.api.Test;
@@ -27,29 +27,29 @@ class GroupRepositoryTest {
     GroupRepository groupRepository;
 
     @Autowired
-    MemberRepository memberRepository;
+    UserGroupRepository userGroupRepository;
 
     @Test
     void createsGroupWithOwnerAndFindsItByMember() {
         User owner = userRepository.save(new User("owner@example.com", "hash", "Owner"));
-        ExpenseGroup group = groupRepository.save(new ExpenseGroup("Trip to Rome", "EUR", owner));
-        memberRepository.saveAndFlush(new GroupMember(group, owner, GroupRole.OWNER));
+        Group group = groupRepository.save(new Group("Trip to Rome", "EUR", owner));
+        userGroupRepository.saveAndFlush(new UserGroup(group, owner, GroupRole.OWNER));
 
         assertThat(group.getId()).isNotNull();
-        assertThat(memberRepository.existsByGroupIdAndUserId(group.getId(), owner.getId())).isTrue();
-        assertThat(memberRepository.findByGroupId(group.getId())).hasSize(1);
+        assertThat(userGroupRepository.existsByGroupIdAndUserId(group.getId(), owner.getId())).isTrue();
+        assertThat(userGroupRepository.findByGroupId(group.getId())).hasSize(1);
         assertThat(groupRepository.findAllByMemberId(owner.getId()))
-                .extracting(ExpenseGroup::getName)
+                .extracting(Group::getName)
                 .containsExactly("Trip to Rome");
     }
 
     @Test
     void rejectsDuplicateMembership() {
         User user = userRepository.save(new User("user@example.com", "hash", "User"));
-        ExpenseGroup group = groupRepository.save(new ExpenseGroup("Flat", "EUR", user));
-        memberRepository.saveAndFlush(new GroupMember(group, user, GroupRole.OWNER));
+        Group group = groupRepository.save(new Group("Flat", "EUR", user));
+        userGroupRepository.saveAndFlush(new UserGroup(group, user, GroupRole.OWNER));
 
-        assertThatThrownBy(() -> memberRepository.saveAndFlush(new GroupMember(group, user, GroupRole.MEMBER)))
+        assertThatThrownBy(() -> userGroupRepository.saveAndFlush(new UserGroup(group, user, GroupRole.MEMBER)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
