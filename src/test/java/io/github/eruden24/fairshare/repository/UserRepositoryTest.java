@@ -30,6 +30,5 @@ public class UserRepositoryTest {
         assertThat(userRepository.findByEmailIgnoreCase("eruden@example.com")).isPresent();
         assertThat(userRepository.existsByEmailIgnoreCase("ERUDEN@EXAMPLE.COM")).isTrue();
 
-
     }
 }

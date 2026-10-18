@@ -3,7 +3,7 @@ package io.github.eruden24.fairshare.repository;
 import io.github.eruden24.fairshare.TestcontainersConfiguration;
 import io.github.eruden24.fairshare.entity.ExpenseGroup;
 import io.github.eruden24.fairshare.entity.GroupMember;
-import io.github.eruden24.fairshare.entity.GroupRole;
+import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.entity.User;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

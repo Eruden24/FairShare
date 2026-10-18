@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -26,5 +27,10 @@ public class UserController {
     @GetMapping("/{id}")
     public UserResponse getById(@PathVariable UUID id) {
         return userService.getById(id);
+    }
+
+    @GetMapping
+    public List<UserResponse> getAll() {
+        return userService.listAll();
     }
 }

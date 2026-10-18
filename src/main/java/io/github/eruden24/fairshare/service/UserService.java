@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -41,6 +42,11 @@ public class UserService {
         }
 
         return userMapper.toResponse(userRepository.saveAndFlush(user));
+    }
+
+    @Transactional(readOnly = true)
+    public List<UserResponse> listAll() {
+        return userMapper.toResponse(userRepository.findAll());
     }
     
     @Transactional(readOnly = true)

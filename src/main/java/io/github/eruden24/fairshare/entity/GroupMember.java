@@ -1,5 +1,6 @@
 package io.github.eruden24.fairshare.entity;
 
+import io.github.eruden24.fairshare.enumeration.GroupRole;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
