@@ -44,6 +44,7 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 | GET | `/api/users/me` | logged in | My profile |
 | PATCH | `/api/users/me` | logged in | Update display name / default currency |
 | PUT | `/api/users/me/password` | logged in | Change password |
+| GET | `/api/users/me/balances` | logged in | My balance in each of my groups |
 | GET | `/api/users/search?email=` | logged in | Find a user by exact email |
 | POST | `/api/groups` | logged in | Create a group (you become its owner) |
 | GET | `/api/groups` | logged in | My groups |
@@ -55,8 +56,12 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 | DELETE | `/api/groups/{id}/members/{userId}` | owner | Remove a member |
 | DELETE | `/api/groups/{id}/members/me` | member | Leave the group |
 | PUT | `/api/groups/{id}/owner` | owner | Transfer ownership to another member |
-| POST | `/api/groups/{id}/expenses` | member | Add an expense, split equally between participants |
+| POST | `/api/groups/{id}/expenses` | member | Add an expense |
+| GET | `/api/groups/{id}/expenses` | member | List expenses, newest first (`page`, `size`, `from`, `to`, `paidById`) |
 | GET | `/api/groups/{id}/expenses/{expenseId}` | member | Expense details with each participant's share |
+| PUT | `/api/groups/{id}/expenses/{expenseId}` | creator or owner | Replace an expense (shares are recomputed) |
+| DELETE | `/api/groups/{id}/expenses/{expenseId}` | creator or owner | Delete an expense |
+| GET | `/api/groups/{id}/balances` | member | Everyone's balance in the group |
 
 ## Rules
 
@@ -67,10 +72,36 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 - Emails are stored in lowercase and matched case-insensitively.
 - Amounts are sent and returned as decimals (`12.50`) in the group's currency, with at most as many
   decimals as the currency has (2 for EUR, 0 for JPY). They are stored as whole minor units (cents).
-- An expense is split equally between its participants. When it doesn't divide exactly, the leftover
-  cents go to randomly chosen participants, so the shares always add up to the total. Each share is stored.
 - The payer and every participant of an expense must be members of the group. The payer doesn't have to be a participant.
-- Lists are not paginated yet. Groups and their member lists are small; pagination will come with expenses.
+- Any member can add expenses. Only the member who added an expense, or the group owner, can edit or delete it.
+- Shares always add up exactly to the expense amount, and each share is stored. When an amount doesn't divide
+  exactly, the leftover cents go to randomly chosen participants (the ones who lost most to rounding first).
+- A balance is what someone paid minus their shares: positive means the group owes them, negative means they owe.
+  Balances in a group always add up to zero. They are computed from the expenses, never stored.
+- Someone who left a group still appears in its balances (`"member": false`) while they have expenses in it.
+- The expense list is paginated (`size` up to 100, default 20). Groups and member lists are small and are not.
+
+## Splitting an expense
+
+`splitType` is optional and defaults to `EQUAL`. Each participant may carry a `value`, whose meaning depends on it:
+
+| `splitType` | `value` | Rule | Example: 90.00 between Anna and Bob |
+|---|---|---|---|
+| `EQUAL` | leave it out | same share for everyone | 45.00 / 45.00 |
+| `EXACT` | the amount | values must add up to the amount | 60.00 / 30.00 |
+| `PERCENTAGE` | a percentage, up to 2 decimals | values must add up to 100 | 66.67 / 33.33 → 60.00 / 30.00 |
+| `SHARES` | a number of shares, up to 2 decimals | any positive numbers | 2 / 1 → 60.00 / 30.00 |
+
+```json
+{
+  "description": "Cabin",
+  "amount": 90.00,
+  "paidById": "…",
+  "splitType": "SHARES",
+  "participants": [ { "userId": "…anna", "value": 2 }, { "userId": "…bob", "value": 1 } ],
+  "date": "2026-10-01"
+}
+```
 
 ## Errors
 
@@ -92,5 +123,6 @@ users ──< user_groups >── groups
           (role: OWNER | MEMBER, joined_at)
 
 groups ──< expenses ──< expense_splits >── users
-           (amount_minor, paid_by, date)   (amount_minor)
+           (amount_minor, paid_by,      (amount_minor, split_value)
+            date, split_type)
 ```
