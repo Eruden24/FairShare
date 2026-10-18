@@ -3,7 +3,7 @@
 
 # Build output
 target/
-!.mvn/wrapper/maven-wrapper.jar
+!backend/.mvn/wrapper/maven-wrapper.jar
 
 # IntelliJ
 .idea/

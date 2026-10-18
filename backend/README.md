@@ -6,15 +6,19 @@ A REST API for splitting shared expenses within groups.
 
 ## Running locally
 
-Requirements: JDK 25 and Docker.
+Requirements: JDK 25 and Docker. Run these from the `backend/` folder:
 
 ```bash
+cd backend
 cp .env.example .env            # then fill in your own values
 docker compose up -d            # starts PostgreSQL
 ./mvnw spring-boot:run          # starts the API on http://localhost:8080
 ```
 
 Flyway applies the database migrations on startup.
+
+The web frontend lives in [`frontend/`](../frontend/README.md): `cd frontend && npm install && npm run dev`,
+then open http://localhost:5173.
 
 API docs (Swagger UI): http://localhost:8080/swagger-ui.html. To call protected endpoints from Swagger,
 log in with `POST /api/auth/login`, click **Authorize**, and paste the `accessToken`.

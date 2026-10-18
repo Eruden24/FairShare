@@ -1,3 +1,7 @@
+# Fixed project name: by default Compose names the project after this folder, and a different name would
+# mean a different (empty) database volume.
+name: fairshare
+
 services:
   db:
     image: postgres:17
