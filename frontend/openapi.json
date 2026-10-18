@@ -1,0 +1,872 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "FairShare API", "description": "Split shared expenses within groups", "version": "v1" },
+  "servers": [{ "url": "http://localhost:8081", "description": "Generated server url" }],
+  "security": [{ "bearerAuth": [] }],
+  "tags": [
+    { "name": "Users", "description": "Registration and your own profile" },
+    { "name": "Auth", "description": "Log in to get a JWT for the other endpoints" },
+    { "name": "Expenses", "description": "Expenses of a group and how they are split" },
+    { "name": "Balances", "description": "Who is owed and who owes: paid - owed + sent - received" },
+    { "name": "Settlements", "description": "Payments between members to settle up" },
+    {
+      "name": "Groups",
+      "description": "Groups and their members. Non-members get 404; members get 403 on owner-only actions"
+    }
+  ],
+  "paths": {
+    "/api/users/me/password": {
+      "put": {
+        "tags": ["Users"],
+        "summary": "Change my password",
+        "operationId": "changePassword",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ChangePasswordRequest" } }
+          },
+          "required": true
+        },
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/api/groups/{groupId}/owner": {
+      "put": {
+        "tags": ["Groups"],
+        "summary": "Make another member the owner (owner)",
+        "operationId": "transferOwnership",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/TransferOwnershipRequest" } }
+          },
+          "required": true
+        },
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/api/groups/{groupId}/expenses/{expenseId}": {
+      "get": {
+        "tags": ["Expenses"],
+        "summary": "Expense details with each participant's share",
+        "operationId": "get",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "expenseId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ExpenseResponse" } } }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Expenses"],
+        "summary": "Replace an expense (creator or owner; send version to avoid overwriting someone else's edit)",
+        "operationId": "update",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "expenseId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExpenseRequest" } } },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ExpenseResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Expenses"],
+        "summary": "Delete an expense (creator or owner)",
+        "operationId": "delete",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "expenseId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/api/users": {
+      "post": {
+        "tags": ["Users"],
+        "summary": "Register a new user",
+        "operationId": "register",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateUserRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/UserResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups": {
+      "get": {
+        "tags": ["Groups"],
+        "summary": "Groups I'm a member of",
+        "operationId": "listMine",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/GroupResponse" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Groups"],
+        "summary": "Create a group (you become its owner)",
+        "operationId": "create",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CreateGroupRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/GroupResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/settlements": {
+      "get": {
+        "tags": ["Settlements"],
+        "summary": "List settlements, newest first",
+        "operationId": "list",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SettlementResponse" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Settlements"],
+        "summary": "Record a payment between two members",
+        "operationId": "create_1",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/SettlementRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/SettlementResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/members": {
+      "get": {
+        "tags": ["Groups"],
+        "summary": "List members",
+        "operationId": "listMembers",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MemberResponse" } }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Groups"],
+        "summary": "Add a member by email (owner)",
+        "operationId": "addMember",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AddMemberRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/MemberResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/expenses": {
+      "get": {
+        "tags": ["Expenses"],
+        "summary": "List expenses, newest first, with optional date and payer filters",
+        "operationId": "list_1",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "date" }
+          },
+          {
+            "name": "paidById",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int32", "default": 0, "minimum": 0 }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "integer", "format": "int32", "default": 20, "maximum": 100, "minimum": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/PageResponseExpenseResponse" } } }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Expenses"],
+        "summary": "Add an expense (split EQUAL, EXACT, PERCENTAGE or SHARES)",
+        "operationId": "create_2",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExpenseRequest" } } },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/ExpenseResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Log in and get a Bearer token (5 failed attempts per email in 15 minutes → 429)",
+        "operationId": "login",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/users/me": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "My profile",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/UserResponse" } } }
+          }
+        }
+      },
+      "patch": {
+        "tags": ["Users"],
+        "summary": "Update my display name and/or default currency",
+        "operationId": "updateMe",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateUserRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/UserResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}": {
+      "get": {
+        "tags": ["Groups"],
+        "summary": "Group details",
+        "operationId": "get_1",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/GroupResponse" } } }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Groups"],
+        "summary": "Delete the group (owner, only when all balances are settled)",
+        "operationId": "delete_1",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      },
+      "patch": {
+        "tags": ["Groups"],
+        "summary": "Rename the group (owner)",
+        "operationId": "rename",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/UpdateGroupRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/GroupResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/users/search": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "Find a user by exact email",
+        "operationId": "findByEmail",
+        "parameters": [{ "name": "email", "in": "query", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/UserResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/users/me/balances": {
+      "get": {
+        "tags": ["Balances"],
+        "summary": "My balance in each of my groups",
+        "operationId": "mine",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MyBalanceResponse" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/settlements/suggested": {
+      "get": {
+        "tags": ["Settlements"],
+        "summary": "Suggested transfers that would settle everyone up",
+        "operationId": "suggest",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/SuggestedTransferResponse" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/balances": {
+      "get": {
+        "tags": ["Balances"],
+        "summary": "Everyone's balance in a group",
+        "operationId": "forGroup",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": { "*/*": { "schema": { "$ref": "#/components/schemas/GroupBalancesResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/settlements/{settlementId}": {
+      "delete": {
+        "tags": ["Settlements"],
+        "summary": "Delete a settlement (whoever recorded it, or the owner)",
+        "operationId": "delete_2",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "settlementId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/api/groups/{groupId}/members/{userId}": {
+      "delete": {
+        "tags": ["Groups"],
+        "summary": "Remove a member (owner, only when their balance is zero)",
+        "operationId": "removeMember",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      }
+    },
+    "/api/groups/{groupId}/members/me": {
+      "delete": {
+        "tags": ["Groups"],
+        "summary": "Leave the group (not the owner, only with a zero balance)",
+        "operationId": "leave",
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ChangePasswordRequest": {
+        "type": "object",
+        "properties": {
+          "currentPassword": { "type": "string", "minLength": 1 },
+          "newPassword": { "type": "string", "maxLength": 72, "minLength": 8 }
+        },
+        "required": ["currentPassword", "newPassword"]
+      },
+      "TransferOwnershipRequest": {
+        "type": "object",
+        "properties": { "userId": { "type": "string", "format": "uuid" } },
+        "required": ["userId"]
+      },
+      "ExpenseRequest": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string", "maxLength": 200, "minLength": 0 },
+          "amount": { "type": "number" },
+          "paidById": { "type": "string", "format": "uuid" },
+          "splitType": { "type": "string", "enum": ["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] },
+          "participants": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ParticipantRequest" },
+            "minItems": 1
+          },
+          "date": { "type": "string", "format": "date" },
+          "version": { "type": "integer", "format": "int64" }
+        },
+        "required": ["amount", "description", "paidById", "participants"]
+      },
+      "ParticipantRequest": {
+        "type": "object",
+        "properties": { "userId": { "type": "string", "format": "uuid" }, "value": { "type": "number" } },
+        "required": ["userId"]
+      },
+      "ExpenseResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "groupId": { "type": "string", "format": "uuid" },
+          "description": { "type": "string" },
+          "amount": { "type": "number" },
+          "currency": { "type": "string" },
+          "paidById": { "type": "string", "format": "uuid" },
+          "date": { "type": "string", "format": "date" },
+          "splitType": { "type": "string", "enum": ["EQUAL", "EXACT", "PERCENTAGE", "SHARES"] },
+          "createdById": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" },
+          "version": { "type": "integer", "format": "int64" },
+          "splits": { "type": "array", "items": { "$ref": "#/components/schemas/SplitResponse" } }
+        },
+        "required": [
+          "amount",
+          "createdAt",
+          "createdById",
+          "currency",
+          "date",
+          "description",
+          "groupId",
+          "id",
+          "paidById",
+          "splitType",
+          "splits",
+          "updatedAt",
+          "version"
+        ]
+      },
+      "SplitResponse": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string" },
+          "amount": { "type": "number" },
+          "value": { "type": ["number", "null"] }
+        },
+        "required": ["amount", "displayName", "userId", "value"]
+      },
+      "CreateUserRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email", "maxLength": 255, "minLength": 0 },
+          "password": { "type": "string", "maxLength": 72, "minLength": 8 },
+          "displayName": { "type": "string", "maxLength": 100, "minLength": 0 },
+          "defaultCurrency": { "type": "string" }
+        },
+        "required": ["displayName", "email", "password"]
+      },
+      "UserResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "email": { "type": "string" },
+          "displayName": { "type": "string" },
+          "defaultCurrency": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["createdAt", "defaultCurrency", "displayName", "email", "id"]
+      },
+      "CreateGroupRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 100, "minLength": 0 },
+          "currency": { "type": "string", "minLength": 1 }
+        },
+        "required": ["currency", "name"]
+      },
+      "GroupResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "currency": { "type": "string" },
+          "createdById": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "memberCount": { "type": "integer", "format": "int64" },
+          "myRole": { "type": "string", "enum": ["OWNER", "MEMBER"] }
+        },
+        "required": ["createdAt", "createdById", "currency", "id", "memberCount", "myRole", "name"]
+      },
+      "SettlementRequest": {
+        "type": "object",
+        "properties": {
+          "fromUserId": { "type": "string", "format": "uuid" },
+          "toUserId": { "type": "string", "format": "uuid" },
+          "amount": { "type": "number" },
+          "date": { "type": "string", "format": "date" }
+        },
+        "required": ["amount", "fromUserId", "toUserId"]
+      },
+      "SettlementResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "groupId": { "type": "string", "format": "uuid" },
+          "fromUserId": { "type": "string", "format": "uuid" },
+          "fromDisplayName": { "type": "string" },
+          "toUserId": { "type": "string", "format": "uuid" },
+          "toDisplayName": { "type": "string" },
+          "amount": { "type": "number" },
+          "currency": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "createdById": { "type": "string", "format": "uuid" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "required": [
+          "amount",
+          "createdAt",
+          "createdById",
+          "currency",
+          "date",
+          "fromDisplayName",
+          "fromUserId",
+          "groupId",
+          "id",
+          "toDisplayName",
+          "toUserId"
+        ]
+      },
+      "AddMemberRequest": {
+        "type": "object",
+        "properties": { "email": { "type": "string", "format": "email", "minLength": 1 } },
+        "required": ["email"]
+      },
+      "MemberResponse": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string" },
+          "role": { "type": "string", "enum": ["OWNER", "MEMBER"] },
+          "joinedAt": { "type": "string", "format": "date-time" }
+        },
+        "required": ["displayName", "joinedAt", "role", "userId"]
+      },
+      "LoginRequest": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "format": "email", "minLength": 1 },
+          "password": { "type": "string", "minLength": 1 }
+        },
+        "required": ["email", "password"]
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": { "type": "string" },
+          "tokenType": { "type": "string" },
+          "expiresIn": { "type": "integer", "format": "int64" }
+        },
+        "required": ["accessToken", "expiresIn", "tokenType"]
+      },
+      "UpdateUserRequest": {
+        "type": "object",
+        "properties": {
+          "displayName": { "type": "string", "maxLength": 100, "minLength": 0, "pattern": ".*\\S.*" },
+          "defaultCurrency": { "type": "string" }
+        }
+      },
+      "UpdateGroupRequest": {
+        "type": "object",
+        "properties": { "name": { "type": "string", "maxLength": 100, "minLength": 0 } },
+        "required": ["name"]
+      },
+      "MyBalanceResponse": {
+        "type": "object",
+        "properties": {
+          "groupId": { "type": "string", "format": "uuid" },
+          "groupName": { "type": "string" },
+          "currency": { "type": "string" },
+          "paid": { "type": "number" },
+          "owed": { "type": "number" },
+          "sent": { "type": "number" },
+          "received": { "type": "number" },
+          "balance": { "type": "number" }
+        },
+        "required": ["balance", "currency", "groupId", "groupName", "owed", "paid", "received", "sent"]
+      },
+      "SuggestedTransferResponse": {
+        "type": "object",
+        "properties": {
+          "fromUserId": { "type": "string", "format": "uuid" },
+          "fromDisplayName": { "type": "string" },
+          "toUserId": { "type": "string", "format": "uuid" },
+          "toDisplayName": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["amount", "fromDisplayName", "fromUserId", "toDisplayName", "toUserId"]
+      },
+      "PageResponseExpenseResponse": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "array", "items": { "$ref": "#/components/schemas/ExpenseResponse" } },
+          "page": { "type": "integer", "format": "int32" },
+          "size": { "type": "integer", "format": "int32" },
+          "totalElements": { "type": "integer", "format": "int64" },
+          "totalPages": { "type": "integer", "format": "int32" }
+        },
+        "required": ["content", "page", "size", "totalElements", "totalPages"]
+      },
+      "GroupBalancesResponse": {
+        "type": "object",
+        "properties": {
+          "groupId": { "type": "string", "format": "uuid" },
+          "currency": { "type": "string" },
+          "balances": { "type": "array", "items": { "$ref": "#/components/schemas/MemberBalanceResponse" } }
+        },
+        "required": ["balances", "currency", "groupId"]
+      },
+      "MemberBalanceResponse": {
+        "type": "object",
+        "properties": {
+          "userId": { "type": "string", "format": "uuid" },
+          "displayName": { "type": "string" },
+          "member": { "type": "boolean" },
+          "paid": { "type": "number" },
+          "owed": { "type": "number" },
+          "sent": { "type": "number" },
+          "received": { "type": "number" },
+          "balance": { "type": "number" }
+        },
+        "required": ["balance", "displayName", "member", "owed", "paid", "received", "sent", "userId"]
+      }
+    },
+    "securitySchemes": { "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" } }
+  }
+}

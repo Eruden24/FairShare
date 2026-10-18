@@ -1,0 +1,109 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter';
+
+/*
+ * Design tokens. Components use semantic names (bg-background, text-muted-foreground, border-border...)
+ * instead of raw colors, so the whole app can be re-themed (and get a dark mode) by changing these values.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: oklch(0.985 0.002 247);
+  --foreground: oklch(0.21 0.034 264);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.034 264);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.034 264);
+  --primary: oklch(0.511 0.262 276.97);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.003 264.54);
+  --secondary-foreground: oklch(0.21 0.034 264);
+  --muted: oklch(0.967 0.003 264.54);
+  --muted-foreground: oklch(0.551 0.027 264.36);
+  --accent: oklch(0.962 0.018 272.31);
+  --accent-foreground: oklch(0.398 0.195 277.37);
+  --destructive: oklch(0.577 0.245 27.33);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.596 0.145 163.23);
+  --warning: oklch(0.769 0.188 70.08);
+  --border: oklch(0.928 0.006 264.53);
+  --input: oklch(0.872 0.01 258.34);
+  --ring: oklch(0.585 0.233 277.12);
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.373 0.034 259.73);
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.145 0.02 264);
+  --foreground: oklch(0.967 0.003 264.54);
+  --card: oklch(0.19 0.024 264);
+  --card-foreground: oklch(0.967 0.003 264.54);
+  --popover: oklch(0.19 0.024 264);
+  --popover-foreground: oklch(0.967 0.003 264.54);
+  --primary: oklch(0.673 0.182 276.94);
+  --primary-foreground: oklch(0.145 0.02 264);
+  --secondary: oklch(0.26 0.026 264);
+  --secondary-foreground: oklch(0.967 0.003 264.54);
+  --muted: oklch(0.26 0.026 264);
+  --muted-foreground: oklch(0.707 0.022 261.33);
+  --accent: oklch(0.28 0.06 276);
+  --accent-foreground: oklch(0.87 0.065 274.04);
+  --destructive: oklch(0.637 0.237 25.33);
+  --destructive-foreground: oklch(0.985 0 0);
+  --success: oklch(0.696 0.17 162.48);
+  --warning: oklch(0.828 0.189 84.43);
+  --border: oklch(0.28 0.026 264);
+  --input: oklch(0.34 0.03 264);
+  --ring: oklch(0.673 0.182 276.94);
+  --sidebar: oklch(0.17 0.022 264);
+  --sidebar-foreground: oklch(0.87 0.01 261.81);
+}
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+  --radius-xl: calc(var(--radius) + 6px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  body {
+    @apply min-h-screen bg-background font-sans text-sm text-foreground;
+  }
+  /* Amounts line up in tables */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
