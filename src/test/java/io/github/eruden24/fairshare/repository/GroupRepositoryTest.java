@@ -37,9 +37,9 @@ class GroupRepositoryTest {
 
         assertThat(group.getId()).isNotNull();
         assertThat(userGroupRepository.existsByGroupIdAndUserId(group.getId(), owner.getId())).isTrue();
-        assertThat(userGroupRepository.findByGroupId(group.getId())).hasSize(1);
-        assertThat(groupRepository.findAllByMemberId(owner.getId()))
-                .extracting(Group::getName)
+        assertThat(userGroupRepository.findByGroupIdOrderByJoinedAtAsc(group.getId())).hasSize(1);
+        assertThat(userGroupRepository.findByUserIdOrderByJoinedAtAsc(owner.getId()))
+                .extracting(m -> m.getGroup().getName())
                 .containsExactly("Trip to Rome");
     }
 
@@ -50,6 +50,17 @@ class GroupRepositoryTest {
         userGroupRepository.saveAndFlush(new UserGroup(group, user, GroupRole.OWNER));
 
         assertThatThrownBy(() -> userGroupRepository.saveAndFlush(new UserGroup(group, user, GroupRole.MEMBER)))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void rejectsSecondOwnerInSameGroup() {
+        User owner = userRepository.save(new User("first@example.com", "hash", "First"));
+        User other = userRepository.save(new User("second@example.com", "hash", "Second"));
+        Group group = groupRepository.save(new Group("House", "EUR", owner));
+        userGroupRepository.saveAndFlush(new UserGroup(group, owner, GroupRole.OWNER));
+
+        assertThatThrownBy(() -> userGroupRepository.saveAndFlush(new UserGroup(group, other, GroupRole.OWNER)))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }
