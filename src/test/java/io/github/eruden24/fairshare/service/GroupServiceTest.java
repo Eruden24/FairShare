@@ -55,7 +55,7 @@ class GroupServiceTest {
     @BeforeEach
     void setUp() {
         groupService = new GroupService(groupRepository, userGroupRepository, userRepository,
-                Mappers.getMapper(GroupMapper.class));
+                Mappers.getMapper(GroupMapper.class), new GroupAccess(userGroupRepository));
         owner = new User("owner@example.com", "hash", "Owner");
         member = new User("member@example.com", "hash", "Member");
         group = new Group("Trip", "EUR", owner);

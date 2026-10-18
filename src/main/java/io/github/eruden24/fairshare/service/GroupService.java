@@ -11,7 +11,6 @@ import io.github.eruden24.fairshare.entity.UserGroup;
 import io.github.eruden24.fairshare.enumeration.GroupRole;
 import io.github.eruden24.fairshare.entity.User;
 import io.github.eruden24.fairshare.exception.ConflictException;
-import io.github.eruden24.fairshare.exception.ForbiddenException;
 import io.github.eruden24.fairshare.exception.NotFoundException;
 import io.github.eruden24.fairshare.mapper.GroupMapper;
 import io.github.eruden24.fairshare.repository.GroupRepository;
@@ -27,8 +26,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * Access rules: a group is only visible to its members. For anyone else it does not exist (404),
- * so group ids can't be probed. Members who try an owner-only action get 403.
+ * Access rules (members only, 404 for others, 403 for owner-only actions) live in {@link GroupAccess}.
  */
 @Service
 @RequiredArgsConstructor
@@ -38,6 +36,7 @@ public class GroupService {
     private final UserGroupRepository userGroupRepository;
     private final UserRepository userRepository;
     private final GroupMapper groupMapper;
+    private final GroupAccess groupAccess;
 
     @Transactional
     public GroupResponse create(UUID currentUserId, CreateGroupRequest request) {
@@ -76,12 +75,12 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public GroupResponse get(UUID currentUserId, UUID groupId) {
-        return toResponse(requireMember(groupId, currentUserId));
+        return toResponse(groupAccess.requireMember(groupId, currentUserId));
     }
 
     @Transactional
     public GroupResponse rename(UUID currentUserId, UUID groupId, UpdateGroupRequest request) {
-        UserGroup owner = requireOwner(groupId, currentUserId, "rename the group");
+        UserGroup owner = groupAccess.requireOwner(groupId, currentUserId, "rename the group");
 
         owner.getGroup().setName(request.name().trim());
         groupRepository.flush();
@@ -91,7 +90,7 @@ public class GroupService {
 
     @Transactional
     public void delete(UUID currentUserId, UUID groupId) {
-        UserGroup owner = requireOwner(groupId, currentUserId, "delete the group");
+        UserGroup owner = groupAccess.requireOwner(groupId, currentUserId, "delete the group");
 
         // Remove memberships through JPA first: the owner's membership is loaded in this session,
         // and Hibernate refuses to flush an entity that still points at a deleted group
@@ -101,13 +100,13 @@ public class GroupService {
 
     @Transactional(readOnly = true)
     public List<MemberResponse> listMembers(UUID currentUserId, UUID groupId) {
-        requireMember(groupId, currentUserId);
+        groupAccess.requireMember(groupId, currentUserId);
         return groupMapper.toMemberResponse(userGroupRepository.findByGroupIdOrderByJoinedAtAsc(groupId));
     }
 
     @Transactional
     public MemberResponse addMember(UUID currentUserId, UUID groupId, AddMemberRequest request) {
-        UserGroup owner = requireOwner(groupId, currentUserId, "add members");
+        UserGroup owner = groupAccess.requireOwner(groupId, currentUserId, "add members");
 
         User newMember = userRepository.findByEmailIgnoreCase(UserService.normalizeEmail(request.email())).orElseThrow(
                 () -> new NotFoundException("No user registered with email: " + request.email())
@@ -126,7 +125,7 @@ public class GroupService {
 
     @Transactional
     public void removeMember(UUID currentUserId, UUID groupId, UUID memberUserId) {
-        requireOwner(groupId, currentUserId, "remove members");
+        groupAccess.requireOwner(groupId, currentUserId, "remove members");
 
         if (memberUserId.equals(currentUserId)) {
             throw new ConflictException("The owner cannot be removed; transfer ownership first");
@@ -137,7 +136,7 @@ public class GroupService {
 
     @Transactional
     public void leave(UUID currentUserId, UUID groupId) {
-        UserGroup membership = requireMember(groupId, currentUserId);
+        UserGroup membership = groupAccess.requireMember(groupId, currentUserId);
 
         if (membership.getRole() == GroupRole.OWNER) {
             throw new ConflictException("The owner cannot leave the group; transfer ownership first");
@@ -148,7 +147,7 @@ public class GroupService {
 
     @Transactional
     public void transferOwnership(UUID currentUserId, UUID groupId, TransferOwnershipRequest request) {
-        UserGroup currentOwner = requireOwner(groupId, currentUserId, "transfer ownership");
+        UserGroup currentOwner = groupAccess.requireOwner(groupId, currentUserId, "transfer ownership");
 
         if (request.userId().equals(currentUserId)) {
             throw new ConflictException("You are already the owner of this group");
@@ -173,21 +172,5 @@ public class GroupService {
         return userGroupRepository.findByGroupIdAndUserId(groupId, userId).orElseThrow(
                 () -> new NotFoundException("User is not a member of this group: " + userId)
         );
-    }
-
-    private UserGroup requireMember(UUID groupId, UUID userId) {
-        return userGroupRepository.findByGroupIdAndUserId(groupId, userId).orElseThrow(
-                () -> new NotFoundException("Group not found: " + groupId)
-        );
-    }
-
-    private UserGroup requireOwner(UUID groupId, UUID userId, String action) {
-        UserGroup membership = requireMember(groupId, userId);
-
-        if (membership.getRole() != GroupRole.OWNER) {
-            throw new ForbiddenException("Only the group owner can " + action);
-        }
-
-        return membership;
     }
 }
