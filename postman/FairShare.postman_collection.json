@@ -1,0 +1,797 @@
+{
+	"info": {
+		"_postman_id": "5579f4fc-2b44-41e0-9669-16177e31abe8",
+		"name": "FairShare API",
+		"description": "Every endpoint of the FairShare API, one request each.\n\n## Setup\n1. Import this collection **and** `FairShare-Local.postman_environment.json`.\n2. Select the **FairShare - Local** environment (top right).\n3. Start the API (`./mvnw spring-boot:run`).\n\n## Running\n- **Click any request**: you are logged in automatically as `{{email}}` (the collection pre-request script registers and logs in when there is no valid token).\n- **Run the whole collection** (Runner): requests run top to bottom and each one saves the ids the next ones need (`userId`, `groupId`, `memberId`).\n\n## Variables (environment)\n| Variable | Set by |\n|---|---|\n| `baseUrl`, `email`, `password`, `displayName` | you |\n| `memberEmail`, `memberPassword` | you: a second user, needed to add/remove members and transfer ownership |\n| `token`, `tokenExpiresAt` | Login / auto-login |\n| `userId` | Register, Get me |\n| `groupId` | Create group |\n| `memberId` | Add member |\n\nTo act as a different user, change `email` / `password` and send **Login**.\n\n## Errors\nErrors use Problem Details (RFC 9457): `status`, `title`, `detail`, plus `errors` for validation failures.\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{token}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// 1. Fail fast if no environment is selected: every request depends on it.",
+					"if (!pm.environment.name) {",
+					"    throw new Error(\"Select the 'FairShare - Local' environment (top right) before sending requests.\");",
+					"}",
+					"",
+					"// 2. Auto-login: if this request needs a token and we don't have a valid one,",
+					"//    register the user (409 if it already exists is fine), log in, and store the token.",
+					"const path = pm.request.url.getPath();",
+					"const isPublic = pm.request.method === \"POST\" && (path.endsWith(\"/users\") || path.endsWith(\"/auth/login\"));",
+					"const expiresAt = Number(pm.environment.get(\"tokenExpiresAt\") || 0);",
+					"const hasValidToken = pm.environment.get(\"token\") && Date.now() < expiresAt - 30 * 1000;",
+					"",
+					"if (!isPublic && !hasValidToken) {",
+					"    const baseUrl = pm.environment.get(\"baseUrl\");",
+					"    const credentials = { email: pm.environment.get(\"email\"), password: pm.environment.get(\"password\") };",
+					"    const jsonBody = body => ({ mode: \"raw\", raw: JSON.stringify(body) });",
+					"    const header = { \"Content-Type\": \"application/json\" };",
+					"",
+					"    pm.sendRequest({",
+					"        url: baseUrl + \"/users\", method: \"POST\", header,",
+					"        body: jsonBody({ ...credentials, displayName: pm.environment.get(\"displayName\") })",
+					"    }, () => {",
+					"        pm.sendRequest({ url: baseUrl + \"/auth/login\", method: \"POST\", header, body: jsonBody(credentials) }, (err, res) => {",
+					"            if (err || res.code !== 200) {",
+					"                console.error(\"Auto-login failed. Is the API running and are email/password right?\", err || res.code);",
+					"                return;",
+					"            }",
+					"            const token = res.json();",
+					"            pm.environment.set(\"token\", token.accessToken);",
+					"            pm.environment.set(\"tokenExpiresAt\", Date.now() + token.expiresIn * 1000);",
+					"            console.log(\"Auto-login OK as\", credentials.email);",
+					"        });",
+					"    });",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"pm.test(\"Response time < 1000ms\", () => pm.expect(pm.response.responseTime).to.be.below(1000));"
+				]
+			}
+		}
+	],
+	"item": [
+		{
+			"name": "Users",
+			"description": "Register, then manage your own profile (`/users/me`) and search users.",
+			"item": [
+				{
+					"name": "Register",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users"
+							]
+						},
+						"description": "Public. Creates the user `{{email}}`. Returns **409** if the email is already registered, which the test accepts so the collection can be run again and again.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\",\n    \"displayName\": \"{{displayName}}\",\n    \"defaultCurrency\": \"EUR\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"201 Created, or 409 if already registered\", () => pm.expect(pm.response.code).to.be.oneOf([201, 409]));",
+									"",
+									"if (pm.response.code === 201) {",
+									"    const user = pm.response.json();",
+									"    pm.test(\"email is stored in lowercase\", () => pm.expect(user.email).to.eql(pm.environment.get(\"email\").toLowerCase()));",
+									"    pm.test(\"no password in the response\", () => pm.expect(user).to.not.have.property(\"password\"));",
+									"    pm.environment.set(\"userId\", user.id);",
+									"}"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get me",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"me"
+							]
+						},
+						"description": "Your own profile."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"const me = pm.response.json();",
+									"pm.test(\"it's me\", () => pm.expect(me.email).to.eql(pm.environment.get(\"email\").toLowerCase()));",
+									"pm.environment.set(\"userId\", me.id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Update me",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/me",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"me"
+							]
+						},
+						"description": "Partial update: send only the fields you want to change. `defaultCurrency` must be 3 capital letters.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"displayName\": \"{{displayName}}\",\n    \"defaultCurrency\": \"EUR\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"pm.test(\"display name updated\", () => pm.expect(pm.response.json().displayName).to.eql(pm.environment.get(\"displayName\")));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Change password",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/me/password",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"me",
+								"password"
+							]
+						},
+						"description": "Sets `newPassword` (8-72 characters). Here it sets the same password again so the collection keeps working; to really change it, edit the body **and** update `password` in the environment. Wrong `currentPassword` returns **403**.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"currentPassword\": \"{{password}}\",\n    \"newPassword\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Search by email",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/users/search?email={{email}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"users",
+								"search"
+							],
+							"query": [
+								{
+									"key": "email",
+									"value": "{{email}}"
+								}
+							]
+						},
+						"description": "Finds a user by exact email (case-insensitive). **404** if nobody has that email."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"pm.test(\"found the right user\", () => pm.expect(pm.response.json().email).to.eql(pm.environment.get(\"email\").toLowerCase()));"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"description": "Log in to get a JWT.",
+			"item": [
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/auth/login",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"auth",
+								"login"
+							]
+						},
+						"description": "Public. Logs in as `{{email}}` and saves the JWT as `token`. Every other request sends it as `Authorization: Bearer {{token}}` (set once on the collection). Wrong credentials return **401**.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"{{email}}\",\n    \"password\": \"{{password}}\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"auth": {
+							"type": "noauth"
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"const body = pm.response.json();",
+									"pm.test(\"returns a Bearer token\", () => {",
+									"    pm.expect(body.tokenType).to.eql(\"Bearer\");",
+									"    pm.expect(body.accessToken).to.be.a(\"string\").and.not.empty;",
+									"});",
+									"pm.environment.set(\"token\", body.accessToken);",
+									"pm.environment.set(\"tokenExpiresAt\", Date.now() + body.expiresIn * 1000);"
+								]
+							}
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Groups",
+			"description": "Groups are visible only to their members (others get **404**). Owner-only actions return **403** for members.",
+			"item": [
+				{
+					"name": "Create group",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/groups",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups"
+							]
+						},
+						"description": "You become the group's OWNER. `currency` is 3 capital letters and can't be changed later.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Trip to Rome\",\n    \"currency\": \"EUR\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+									"",
+									"const group = pm.response.json();",
+									"pm.test(\"I am the owner\", () => pm.expect(group.myRole).to.eql(\"OWNER\"));",
+									"pm.test(\"one member (me)\", () => pm.expect(group.memberCount).to.eql(1));",
+									"pm.environment.set(\"groupId\", group.id);"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "List my groups",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/groups",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups"
+							]
+						},
+						"description": "Groups you are a member of."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"pm.test(\"contains {{groupId}}\", () => {",
+									"    const ids = pm.response.json().map(g => g.id);",
+									"    pm.expect(ids).to.include(pm.environment.get(\"groupId\"));",
+									"});"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Get group",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/groups/{{groupId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups",
+								"{{groupId}}"
+							]
+						},
+						"description": "Members only. For a non-member it returns **404** (not 403), so group ids can't be probed."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"pm.test(\"right group\", () => pm.expect(pm.response.json().id).to.eql(pm.environment.get(\"groupId\")));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Rename group",
+					"request": {
+						"method": "PATCH",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/groups/{{groupId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups",
+								"{{groupId}}"
+							]
+						},
+						"description": "Owner only (a member gets **403**). Only the name can change.",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Trip to Luxembourg\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						}
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+									"",
+									"pm.test(\"renamed\", () => pm.expect(pm.response.json().name).to.eql(\"Trip to Luxembourg\"));"
+								]
+							}
+						}
+					]
+				},
+				{
+					"name": "Members",
+					"description": "Membership of `{{groupId}}`.",
+					"item": [
+						{
+							"name": "List members",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/members",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"members"
+									]
+								},
+								"description": "Members only. Ordered by join date."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+											"",
+											"pm.test(\"at least the owner\", () => pm.expect(pm.response.json()).to.not.be.empty);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Add member",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/members",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"members"
+									]
+								},
+								"description": "Owner only. Adds `{{memberEmail}}` (the pre-request script registers that user if needed). **404** if no user has that email, **409** if they're already a member.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"{{memberEmail}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "prerequest",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const sendJson = (method, path, body, callback) => pm.sendRequest({",
+											"    url: pm.environment.get(\"baseUrl\") + path,",
+											"    method,",
+											"    header: {",
+											"        \"Content-Type\": \"application/json\",",
+											"        \"Authorization\": \"Bearer \" + pm.environment.get(\"token\")",
+											"    },",
+											"    body: body === undefined ? undefined : { mode: \"raw\", raw: JSON.stringify(body) }",
+											"}, callback);",
+											"",
+											"// Make sure the second user exists so they can be added. 201 = created, 409 = already registered: both fine.",
+											"sendJson(\"POST\", \"/users\", {",
+											"    email: pm.environment.get(\"memberEmail\"),",
+											"    password: pm.environment.get(\"memberPassword\"),",
+											"    displayName: \"Postman Member\"",
+											"}, (err, res) => console.log(\"Ensure member user exists:\", err || res.code));"
+										]
+									}
+								},
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+											"",
+											"const member = pm.response.json();",
+											"pm.test(\"added as MEMBER\", () => pm.expect(member.role).to.eql(\"MEMBER\"));",
+											"pm.environment.set(\"memberId\", member.userId);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Remove member",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/members/{{memberId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"members",
+										"{{memberId}}"
+									]
+								},
+								"description": "Owner only. The owner can't be removed (**409**): transfer ownership first."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Transfer ownership",
+							"request": {
+								"method": "PUT",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/owner",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"owner"
+									]
+								},
+								"description": "Owner only. Makes `{{memberId}}` the owner; you become a MEMBER. The pre-request script adds `{{memberEmail}}` to the group first if they aren't in it.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"userId\": \"{{memberId}}\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "prerequest",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"const sendJson = (method, path, body, callback) => pm.sendRequest({",
+											"    url: pm.environment.get(\"baseUrl\") + path,",
+											"    method,",
+											"    header: {",
+											"        \"Content-Type\": \"application/json\",",
+											"        \"Authorization\": \"Bearer \" + pm.environment.get(\"token\")",
+											"    },",
+											"    body: body === undefined ? undefined : { mode: \"raw\", raw: JSON.stringify(body) }",
+											"}, callback);",
+											"",
+											"// Transfer needs another member in the group. Add them: 201 = added, 409 = already a member: both fine.",
+											"sendJson(\"POST\", \"/users\", {",
+											"    email: pm.environment.get(\"memberEmail\"),",
+											"    password: pm.environment.get(\"memberPassword\"),",
+											"    displayName: \"Postman Member\"",
+											"}, () => {",
+											"    sendJson(\"POST\", \"/groups/\" + pm.environment.get(\"groupId\") + \"/members\",",
+											"        { email: pm.environment.get(\"memberEmail\") },",
+											"        (err, res) => {",
+											"            console.log(\"Ensure member is in group:\", err || res.code);",
+											"            if (!err && res.code === 201) {",
+											"                pm.environment.set(\"memberId\", res.json().userId);",
+											"            }",
+											"        });",
+											"});"
+										]
+									}
+								},
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Leave group",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/members/me",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"members",
+										"me"
+									]
+								},
+								"description": "Any member except the owner (**409**: transfer ownership first). After this the group returns 404 for you."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+										]
+									}
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "Delete group",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/groups/{{groupId}}",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"groups",
+								"{{groupId}}"
+							]
+						},
+						"description": "Owner only. If `{{groupId}}` isn't a group you own (for example after **Leave group**), the pre-request script creates a throwaway group and deletes that instead."
+					},
+					"response": [],
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"const sendJson = (method, path, body, callback) => pm.sendRequest({",
+									"    url: pm.environment.get(\"baseUrl\") + path,",
+									"    method,",
+									"    header: {",
+									"        \"Content-Type\": \"application/json\",",
+									"        \"Authorization\": \"Bearer \" + pm.environment.get(\"token\")",
+									"    },",
+									"    body: body === undefined ? undefined : { mode: \"raw\", raw: JSON.stringify(body) }",
+									"}, callback);",
+									"",
+									"// Only the owner can delete. If {{groupId}} isn't a group you own (e.g. you just left it),",
+									"// create a throwaway group to delete instead.",
+									"sendJson(\"GET\", \"/groups/\" + pm.environment.get(\"groupId\"), undefined, (err, res) => {",
+									"    if (!err && res.code === 200 && res.json().myRole === \"OWNER\") {",
+									"        return;",
+									"    }",
+									"    sendJson(\"POST\", \"/groups\", { name: \"Group to delete\", currency: \"EUR\" }, (err2, res2) => {",
+									"        if (!err2 && res2.code === 201) {",
+									"            pm.environment.set(\"groupId\", res2.json().id);",
+									"            console.log(\"Created a group to delete:\", res2.json().id);",
+									"        }",
+									"    });",
+									"});"
+								]
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"type": "text/javascript",
+								"exec": [
+									"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
+								]
+							}
+						}
+					]
+				}
+			]
+		}
+	]
+}
