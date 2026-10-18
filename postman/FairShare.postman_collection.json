@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "5579f4fc-2b44-41e0-9669-16177e31abe8",
 		"name": "FairShare API",
-		"description": "Every endpoint of the FairShare API, one request each.\n\n## Setup\n1. Import this collection **and** `FairShare-Local.postman_environment.json`.\n2. Select the **FairShare - Local** environment (top right).\n3. Start the API (`./mvnw spring-boot:run`).\n\n## Running\n- **Click any request**: you are logged in automatically as `{{email}}` (the collection pre-request script registers and logs in when there is no valid token).\n- **Run the whole collection** (Runner): requests run top to bottom and each one saves the ids the next ones need (`userId`, `groupId`, `memberId`).\n\n## Variables (environment)\n| Variable | Set by |\n|---|---|\n| `baseUrl`, `email`, `password`, `displayName` | you |\n| `memberEmail`, `memberPassword` | you: a second user, needed to add/remove members and transfer ownership |\n| `token`, `tokenExpiresAt` | Login / auto-login |\n| `userId` | Register, Get me |\n| `groupId` | Create group |\n| `memberId` | Add member |\n| `expenseId` | Create expense |\n\nTo act as a different user, change `email` / `password` and send **Login**.\n\n## Errors\nErrors use Problem Details (RFC 9457): `status`, `title`, `detail`, plus `errors` for validation failures.\n",
+		"description": "Every endpoint of the FairShare API, one request each.\n\n## Setup\n1. Import this collection **and** `FairShare-Local.postman_environment.json`.\n2. Select the **FairShare - Local** environment (top right).\n3. Start the API (`./mvnw spring-boot:run`).\n\n## Running\n- **Click any request**: you are logged in automatically as `{{email}}` (the collection pre-request script registers and logs in when there is no valid token).\n- **Run the whole collection** (Runner): requests run top to bottom and each one saves the ids the next ones need (`userId`, `groupId`, `memberId`).\n\n## Variables (environment)\n| Variable | Set by |\n|---|---|\n| `baseUrl`, `email`, `password`, `displayName` | you |\n| `memberEmail`, `memberPassword` | you: a second user, needed to add/remove members and transfer ownership |\n| `token`, `tokenExpiresAt` | Login / auto-login |\n| `userId` | Register, Get me |\n| `groupId` | Create group |\n| `memberId` | Add member |\n| `expenseId`, `expenseVersion` | Create expense, Update expense |\n| `settlementId` | Record settlement |\n\nTo act as a different user, change `email` / `password` and send **Login**.\n\n## Errors\nErrors use Problem Details (RFC 9457): `status`, `title`, `detail`, plus `errors` for validation failures.\n",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -866,7 +866,8 @@
 											"pm.test(\"the extra cent went to exactly one person\", () => {",
 											"    pm.expect(expense.splits.map(split => split.amount).sort()).to.eql([5, 5.01]);",
 											"});",
-											"pm.environment.set(\"expenseId\", expense.id);"
+											"pm.environment.set(\"expenseId\", expense.id);",
+											"pm.environment.set(\"expenseVersion\", expense.version);"
 										]
 									}
 								}
@@ -974,10 +975,10 @@
 										"{{expenseId}}"
 									]
 								},
-								"description": "Only the member who added the expense, or the group owner (others get **403**). Replaces the whole expense, so send every field; the shares are recomputed.\n\nThis example changes it to a **SHARES** split: 90.00 with 2 shares for you and 1 for the member, so 60.00 / 30.00. Each split keeps its `value`.",
+								"description": "Only the member who added the expense, or the group owner (others get **403**). Replaces the whole expense, so send every field; the shares are recomputed.\n\nThis example changes it to a **SHARES** split: 90.00 with 2 shares for you and 1 for the member, so 60.00 / 30.00. Each split keeps its `value`.\n\n`version` is the one you last read (saved by Create expense). If someone changed the expense since, you get **409** instead of overwriting their change. Leave it out to skip the check.",
 								"body": {
 									"mode": "raw",
-									"raw": "{\n    \"description\": \"Cabin, 3 nights\",\n    \"amount\": 90.0,\n    \"paidById\": \"{{userId}}\",\n    \"splitType\": \"SHARES\",\n    \"participants\": [\n        {\n            \"userId\": \"{{userId}}\",\n            \"value\": 2\n        },\n        {\n            \"userId\": \"{{memberId}}\",\n            \"value\": 1\n        }\n    ],\n    \"date\": \"2026-10-01\"\n}",
+									"raw": "{\n    \"description\": \"Cabin, 3 nights\",\n    \"amount\": 90.0,\n    \"paidById\": \"{{userId}}\",\n    \"splitType\": \"SHARES\",\n    \"participants\": [\n        {\n            \"userId\": \"{{userId}}\",\n            \"value\": 2\n        },\n        {\n            \"userId\": \"{{memberId}}\",\n            \"value\": 1\n        }\n    ],\n    \"date\": \"2026-10-01\",\n    \"version\": {{expenseVersion}}\n}",
 									"options": {
 										"raw": {
 											"language": "json"
@@ -1008,7 +1009,9 @@
 											"    pm.expect(cents(shareOf(pm.environment.get(\"userId\")).amount)).to.eql(6000);",
 											"    pm.expect(cents(shareOf(pm.environment.get(\"memberId\")).amount)).to.eql(3000);",
 											"    pm.expect(shareOf(pm.environment.get(\"userId\")).value).to.eql(2);",
-											"});"
+											"});",
+											"pm.test(\"version went up\", () => pm.expect(expense.version).to.be.above(Number(pm.environment.get(\"expenseVersion\"))));",
+											"pm.environment.set(\"expenseVersion\", expense.version);"
 										]
 									}
 								}
@@ -1036,7 +1039,7 @@
 										"balances"
 									]
 								},
-								"description": "Any member. For each person: `paid` (expenses they paid), `owed` (their shares) and `balance` = paid - owed. Positive: the group owes them. Negative: they owe the group.\n\nCreditors come first. The balances always add up to zero. Someone who left but still has expenses in the group shows up with `\"member\": false`.\n\nAfter **Update expense** (you paid 90.00, your share 60.00): you are at +30.00, the member at -30.00."
+								"description": "Any member. For each person: `paid` (expenses they paid), `owed` (their shares) and `sent` / `received` (settlements) and `balance` = paid - owed + sent - received. Positive: the group owes them. Negative: they owe the group.\n\nCreditors come first. The balances always add up to zero. Someone who left but still has expenses in the group shows up with `\"member\": false`.\n\nAfter **Update expense** (you paid 90.00, your share 60.00): you are at +30.00, the member at -30.00."
 							},
 							"response": [],
 							"event": [
@@ -1055,9 +1058,173 @@
 											"pm.test(\"balances add up to zero\", () => {",
 											"    pm.expect(body.balances.reduce((sum, b) => sum + cents(b.balance), 0)).to.eql(0);",
 											"});",
-											"pm.test(\"balance = paid - owed\", () => {",
-											"    body.balances.forEach(b => pm.expect(cents(b.balance)).to.eql(cents(b.paid) - cents(b.owed)));",
+											"pm.test(\"balance = paid - owed + sent - received\", () => {",
+											"    body.balances.forEach(b => pm.expect(cents(b.balance))",
+											"        .to.eql(cents(b.paid) - cents(b.owed) + cents(b.sent) - cents(b.received)));",
 											"});"
+										]
+									}
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "Settlements",
+					"description": "Payments between members to settle up. Nobody can leave or be removed, and the group can't be deleted, while a balance isn't zero (**409**).",
+					"item": [
+						{
+							"name": "Suggested transfers",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/settlements/suggested",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"settlements",
+										"suggested"
+									]
+								},
+								"description": "Any member. The transfers that would bring every balance to zero: whoever owes the most pays whoever is owed the most, and so on (n people need at most n - 1 transfers). Empty when everyone is settled.\n\nAfter **Update expense**: one transfer, the member pays you 30.00."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+											"",
+											"// Compare money in cents: 5.01 + 5.00 in floating point isn't exactly 10.01",
+											"const cents = amount => Math.round(amount * 100);",
+											"",
+											"const transfers = pm.response.json();",
+											"pm.test(\"each transfer is between two different people, for a positive amount\", () => {",
+											"    transfers.forEach(t => {",
+											"        pm.expect(t.fromUserId).to.not.eql(t.toUserId);",
+											"        pm.expect(cents(t.amount)).to.be.above(0);",
+											"    });",
+											"});"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Record settlement",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/settlements",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"settlements"
+									]
+								},
+								"description": "Any member can record a payment between two members (both must be in the group, and different). The amount follows the group currency's decimals. `date` is optional (defaults to today).\n\nHere the member pays you back the 30.00 from **Suggested transfers**, so both balances go to zero.",
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"fromUserId\": \"{{memberId}}\",\n    \"toUserId\": \"{{userId}}\",\n    \"amount\": 30.0,\n    \"date\": \"2026-10-05\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								}
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"201 Created\", () => pm.response.to.have.status(201));",
+											"",
+											"const settlement = pm.response.json();",
+											"pm.test(\"from the member to me\", () => {",
+											"    pm.expect(settlement.fromUserId).to.eql(pm.environment.get(\"memberId\"));",
+											"    pm.expect(settlement.toUserId).to.eql(pm.environment.get(\"userId\"));",
+											"});",
+											"pm.environment.set(\"settlementId\", settlement.id);"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "List settlements",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/settlements",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"settlements"
+									]
+								},
+								"description": "Any member. Newest first."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"200 OK\", () => pm.response.to.have.status(200));",
+											"",
+											"pm.test(\"contains {{settlementId}}\", () => {",
+											"    pm.expect(pm.response.json().map(s => s.id)).to.include(pm.environment.get(\"settlementId\"));",
+											"});"
+										]
+									}
+								}
+							]
+						},
+						{
+							"name": "Delete settlement",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "{{baseUrl}}/groups/{{groupId}}/settlements/{{settlementId}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"groups",
+										"{{groupId}}",
+										"settlements",
+										"{{settlementId}}"
+									]
+								},
+								"description": "Whoever recorded it, or the group owner (others get **403**). The debt it settled is open again."
+							},
+							"response": [],
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"type": "text/javascript",
+										"exec": [
+											"pm.test(\"204 No Content\", () => pm.response.to.have.status(204));"
 										]
 									}
 								}

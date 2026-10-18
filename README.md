@@ -35,6 +35,13 @@ The integration tests start a throwaway PostgreSQL container, so Docker must be 
 
 Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (default `PT1H`).
 
+After 5 failed logins for the same email within 15 minutes, logins for that email return **429** with a
+`Retry-After` header (in seconds) until the 15 minutes are over, even with the right password.
+
+There are no refresh tokens: when the token expires, log in again. Short-lived access tokens keep the API
+simple and stateless; refresh tokens (stored and revocable server-side) can be added when a frontend needs
+long sessions.
+
 ## Endpoints
 
 | Method | Path | Who | Description |
@@ -50,11 +57,11 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 | GET | `/api/groups` | logged in | My groups |
 | GET | `/api/groups/{id}` | member | Group details |
 | PATCH | `/api/groups/{id}` | owner | Rename the group |
-| DELETE | `/api/groups/{id}` | owner | Delete the group |
+| DELETE | `/api/groups/{id}` | owner | Delete the group (only when everyone is settled up) |
 | GET | `/api/groups/{id}/members` | member | List members |
 | POST | `/api/groups/{id}/members` | owner | Add a member by email |
-| DELETE | `/api/groups/{id}/members/{userId}` | owner | Remove a member |
-| DELETE | `/api/groups/{id}/members/me` | member | Leave the group |
+| DELETE | `/api/groups/{id}/members/{userId}` | owner | Remove a member (only with a zero balance) |
+| DELETE | `/api/groups/{id}/members/me` | member | Leave the group (only with a zero balance) |
 | PUT | `/api/groups/{id}/owner` | owner | Transfer ownership to another member |
 | POST | `/api/groups/{id}/expenses` | member | Add an expense |
 | GET | `/api/groups/{id}/expenses` | member | List expenses, newest first (`page`, `size`, `from`, `to`, `paidById`) |
@@ -62,6 +69,10 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 | PUT | `/api/groups/{id}/expenses/{expenseId}` | creator or owner | Replace an expense (shares are recomputed) |
 | DELETE | `/api/groups/{id}/expenses/{expenseId}` | creator or owner | Delete an expense |
 | GET | `/api/groups/{id}/balances` | member | Everyone's balance in the group |
+| POST | `/api/groups/{id}/settlements` | member | Record a payment between two members |
+| GET | `/api/groups/{id}/settlements` | member | List settlements, newest first |
+| GET | `/api/groups/{id}/settlements/suggested` | member | Who should pay whom to settle everyone up |
+| DELETE | `/api/groups/{id}/settlements/{settlementId}` | recorder or owner | Delete a settlement |
 
 ## Rules
 
@@ -76,9 +87,18 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 - Any member can add expenses. Only the member who added an expense, or the group owner, can edit or delete it.
 - Shares always add up exactly to the expense amount, and each share is stored. When an amount doesn't divide
   exactly, the leftover cents go to randomly chosen participants (the ones who lost most to rounding first).
-- A balance is what someone paid minus their shares: positive means the group owes them, negative means they owe.
-  Balances in a group always add up to zero. They are computed from the expenses, never stored.
-- Someone who left a group still appears in its balances (`"member": false`) while they have expenses in it.
+- A balance is `paid - owed + sent - received`: expenses someone paid, minus their shares, plus settlements they
+  paid, minus settlements they received. Positive means the group owes them, negative means they owe.
+  Balances in a group always add up to zero. They are computed from expenses and settlements, never stored.
+- Any member can record a settlement between two members (one person often keeps the books). Settlements are
+  never edited: delete a wrong one and record it again.
+- Money can't disappear: nobody can leave or be removed while their balance isn't zero, and a group can only be
+  deleted once everyone is settled up (**409** otherwise).
+- Someone who left a group still appears in its balances (`"member": false`), with a zero balance, because their
+  expenses stay in the group's history.
+- Expenses carry a `version`. Send the version you last read when replacing an expense: if someone changed it in
+  the meantime you get **409** instead of overwriting their change. Two edits at the very same moment are also
+  caught (the second gets 409).
 - The expense list is paginated (`size` up to 100, default 20). Groups and member lists are small and are not.
 
 ## Splitting an expense
@@ -103,9 +123,21 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 }
 ```
 
+## Settling up
+
+`GET /api/groups/{id}/settlements/suggested` lists the transfers that bring every balance to zero. The person
+who owes the most pays the person who is owed the most, and so on, so `n` people need at most `n - 1` transfers.
+Record each one as it happens:
+
+```json
+POST /api/groups/{id}/settlements
+{ "fromUserId": "…carol", "toUserId": "…bob", "amount": 30.00, "date": "2026-10-05" }
+```
+
 ## Errors
 
-Errors use the standard [Problem Details](https://www.rfc-editor.org/rfc/rfc9457) format:
+Every error, including 401 and 403 from the security layer, uses the standard
+[Problem Details](https://www.rfc-editor.org/rfc/rfc9457) format:
 
 ```json
 {
@@ -116,6 +148,15 @@ Errors use the standard [Problem Details](https://www.rfc-editor.org/rfc/rfc9457
 }
 ```
 
+| Status | When |
+|---|---|
+| 400 | Invalid body, query parameter or path variable. `errors` maps each field to its problem |
+| 401 | Missing, invalid or expired token; wrong email or password |
+| 403 | A member trying something only the owner (or the creator) may do |
+| 404 | Not found, or a group you're not a member of |
+| 409 | Conflicts: duplicate email or member, open balances, an outdated `version` |
+| 429 | Too many failed logins; see `Retry-After` |
+
 ## Data model
 
 ```
@@ -124,5 +165,8 @@ users ──< user_groups >── groups
 
 groups ──< expenses ──< expense_splits >── users
            (amount_minor, paid_by,      (amount_minor, split_value)
-            date, split_type)
+            date, split_type, version)
+
+groups ──< settlements >── users
+           (from_user, to_user, amount_minor, settled_on)
 ```
