@@ -55,6 +55,8 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 | DELETE | `/api/groups/{id}/members/{userId}` | owner | Remove a member |
 | DELETE | `/api/groups/{id}/members/me` | member | Leave the group |
 | PUT | `/api/groups/{id}/owner` | owner | Transfer ownership to another member |
+| POST | `/api/groups/{id}/expenses` | member | Add an expense, split equally between participants |
+| GET | `/api/groups/{id}/expenses/{expenseId}` | member | Expense details with each participant's share |
 
 ## Rules
 
@@ -63,6 +65,11 @@ Tokens are signed with `JWT_SECRET` (HS256) and expire after `JWT_EXPIRATION` (d
 - Each group has exactly one owner (enforced by a database index). The owner must transfer ownership before leaving.
 - A group's currency can't be changed after creation, because its expenses are recorded in it.
 - Emails are stored in lowercase and matched case-insensitively.
+- Amounts are sent and returned as decimals (`12.50`) in the group's currency, with at most as many
+  decimals as the currency has (2 for EUR, 0 for JPY). They are stored as whole minor units (cents).
+- An expense is split equally between its participants. When it doesn't divide exactly, the leftover
+  cents go to randomly chosen participants, so the shares always add up to the total. Each share is stored.
+- The payer and every participant of an expense must be members of the group. The payer doesn't have to be a participant.
 - Lists are not paginated yet. Groups and their member lists are small; pagination will come with expenses.
 
 ## Errors
@@ -83,4 +90,7 @@ Errors use the standard [Problem Details](https://www.rfc-editor.org/rfc/rfc9457
 ```
 users ──< user_groups >── groups
           (role: OWNER | MEMBER, joined_at)
+
+groups ──< expenses ──< expense_splits >── users
+           (amount_minor, paid_by, date)   (amount_minor)
 ```
